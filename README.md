@@ -21,3 +21,13 @@ Bu yazılımın kullanımı tamamen kullanıcı sorumluluğundadır.
 Olası hesap sorunları, veri kaybı veya servis erişim problemlerinden geliştirici sorumlu tutulamaz.
 
 Uygulamanın kodlar doping tarafından zaten obfustucate edilmiştir yapımında kaynak kodlarıyla oynananmamıştır.
+
+
+
+#Kurulum adımları
+
+wget https://github.com/c8dhjp4tyv-bit/Doping-Haf-za-Linux/releases/download/v.1.0.0/doping-hafiza-1.0.0.AppImage
+
+chmod +x doping-hafiza-1.0.0.AppImage
+
+./doping-hafiza-1.0.0.AppImage
