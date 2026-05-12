@@ -33,3 +33,12 @@ chmod +x doping-hafiza-1.0.0.AppImage
 ```bash
 ./doping-hafiza-1.0.0.AppImage
 ```
+## Star History
+
+<a href="https://www.star-history.com/?repos=c8dhjp4tyv-bit%2FDoping-Hafiza-Linux&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=c8dhjp4tyv-bit/Doping-Hafiza-Linux&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=c8dhjp4tyv-bit/Doping-Hafiza-Linux&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=c8dhjp4tyv-bit/Doping-Hafiza-Linux&type=date&legend=top-left" />
+ </picture>
+</a>
