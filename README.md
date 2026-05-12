@@ -23,10 +23,7 @@ Olası hesap sorunları, veri kaybı veya servis erişim problemlerinden gelişt
 
 ### Kurulum adımları
 
-- İndir:
-```bash
-wget https://github.com/c8dhjp4tyv-bit/Doping-Haf-za-Linux/releases/download/v.1.0.0/doping-hafiza-1.0.0.AppImage
-```
+wget https://github.com/c8dhjp4tyv-bit/Doping-Hafiza-Linux/releases/download/v.1.0.0/doping-hafiza-1.0.0.AppImage
 
 - Dosyayı Çalıştırılabilir yap:
 ```bash
