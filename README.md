@@ -26,7 +26,7 @@ Uygulamanın kodlar doping tarafından zaten obfustucate edilmiştir yapımında
 
 #Kurulum adımları
 
-wget https://github.com/c8dhjp4tyv-bit/Doping-Haf-za-Linux/releases/download/v.1.0.0/doping-hafiza-1.0.0.AppImage
+wget https://github.com/c8dhjp4tyv-bit/Doping-Hafiza-Linux/releases/download/v.1.0.0/doping-hafiza-1.0.0.AppImage
 
 chmod +x doping-hafiza-1.0.0.AppImage
 
