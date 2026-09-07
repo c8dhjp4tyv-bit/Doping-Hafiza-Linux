@@ -118,10 +118,12 @@ mkdir -p "$electron_dir"
 unzip -q "$electron_zip" -d "$electron_dir"
 electron_bin=$(find "$electron_dir" -type f -name electron -perm -u+x -print -quit)
 [[ -n "$electron_bin" ]] || die 'Electron Linux zip did not contain an executable named electron'
-runtime_version=$("$electron_bin" --version 2>/dev/null | head -n 1 || true)
-runtime_version=${runtime_version#v}
-[[ "$runtime_version" == "$electron_version" ]] || die 'Electron runtime version does not match the selected version'
 electron_root=$(dirname "$electron_bin")
+runtime_version=$(cat "$electron_root/version" 2>/dev/null | tr -d '\r\n' || true)
+if [[ -z "$runtime_version" ]]; then
+  runtime_version=$("$electron_bin" --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)
+fi
+[[ "$runtime_version" == "$electron_version" ]] || die 'Electron runtime version does not match the selected version'
 
 appdir="$work_dir/AppDir"
 mkdir -p "$appdir"
