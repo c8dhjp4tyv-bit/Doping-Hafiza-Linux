@@ -1,0 +1,95 @@
+name: Weekly upstream Linux release
+
+on:
+  schedule:
+    # GitHub schedules are UTC. This is Monday 06:17 in Europe/Istanbul.
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/weekly-build.yml'
+      - 'packaging/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-upstream-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Fetch, patch and publish Linux build
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_PAGE_URL: https://teknik.dopinghafiza.com/
+      DOPING_UPDATE_OWNER: c8dhjp4tyv-bit
+      DOPING_UPDATE_REPO: Doping-Hafiza-Linux
+      # This runtime is published upstream and pinned in build-appimage.sh.
+      APPIMAGE_RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+      APPIMAGE_RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            binutils ca-certificates curl desktop-file-utils file icoutils imagemagick \
+            p7zip-full squashfs-tools unzip xxd
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned asar tool
+        run: npm install --global @electron/asar@3.4.1
+
+      - name: Build AppImage and update metadata
+        id: build
+        run: ./packaging/build-appimage.sh
+
+      - name: Verify release payload
+        env:
+          APPIMAGE_NAME: ${{ steps.build.outputs.appimage }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$APPIMAGE_NAME"
+          test -x "dist/$APPIMAGE_NAME"
+          (cd dist && sha256sum -c "$APPIMAGE_NAME.sha256")
+          ./dist/"$APPIMAGE_NAME" --appimage-offset
+          extract_dir="$(mktemp -d)"
+          trap 'rm -rf "$extract_dir"' EXIT
+          (
+            cd "$extract_dir"
+            "${GITHUB_WORKSPACE}/dist/$APPIMAGE_NAME" --appimage-extract >/dev/null
+          )
+          grep -Fq 'provider: github' "$extract_dir/squashfs-root/resources/app-update.yml"
+          grep -Fq 'owner: c8dhjp4tyv-bit' "$extract_dir/squashfs-root/resources/app-update.yml"
+          grep -Fq 'repo: Doping-Hafiza-Linux' "$extract_dir/squashfs-root/resources/app-update.yml"
+          grep -Fq -- '--disable-gpu --disable-gpu-compositing' "$extract_dir/squashfs-root/AppRun"
+          test -x "$extract_dir/squashfs-root/doping-hafiza"
+          grep -Fq 'sha512:' dist/latest-linux.yml
+          desktop-file-validate dist/doping-hafiza.desktop
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ steps.build.outputs.version }}
+          APPIMAGE_NAME: ${{ steps.build.outputs.appimage }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$APP_VERSION"
+          test -n "$APPIMAGE_NAME"
+          tag="v$APP_VERSION"
+          mapfile -t assets < <(find dist -maxdepth 1 -type f ! -name release-notes.md -print | sort)
+          test "${#assets[@]}" -gt 0
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" --title "Doping Hafıza Linux $APP_VERSION" --notes-file dist/release-notes.md --latest --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" "${assets[@]}" --title "Doping Hafıza Linux $APP_VERSION" --notes-file dist/release-notes.md --latest --repo "$GITHUB_REPOSITORY"
+          fi

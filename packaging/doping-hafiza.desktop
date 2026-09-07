@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Doping Hafıza
+Comment=Doping Hafıza eğitim uygulaması
+Exec=AppRun %U
+Terminal=false
+Type=Application
+Icon=doping-hafiza
+StartupWMClass=doping-hafiza
+Categories=Education;
+Keywords=eğitim;education;doping;hafıza;
+X-AppImage-Version=@VERSION@

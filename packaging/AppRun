@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+APPDIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+# Keep the Electron bundle self-contained and avoid the GPU compositor path
+# that is broken on some Linux/Wayland combinations.
+if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+  LD_LIBRARY_PATH="$APPDIR:$LD_LIBRARY_PATH"
+else
+  LD_LIBRARY_PATH="$APPDIR"
+fi
+export LD_LIBRARY_PATH
+
+# Put the policy switches first so Electron parses them as command-line
+# options even when the caller passes a file or URL argument.
+set -- --disable-gpu --disable-gpu-compositing "$@"
+
+# Users can opt into a specific Ozone backend without changing the AppImage.
+if [ -n "${DOPING_HAFIZA_OZONE_PLATFORM:-}" ]; then
+  set -- "--ozone-platform=${DOPING_HAFIZA_OZONE_PLATFORM}" "$@"
+fi
+
+exec "$APPDIR/doping-hafiza" "$@"
