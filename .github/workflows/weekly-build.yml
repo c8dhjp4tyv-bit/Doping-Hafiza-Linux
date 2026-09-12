@@ -86,7 +86,8 @@ jobs:
           asar extract "$extract_dir/squashfs-root/resources/app.asar" "$extract_dir/app-tree"
           main_relative=$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(j.main || "")' "$extract_dir/app-tree/package.json")
           test -n "$main_relative"
-          grep -Fq '[doping-hafiza] Linux media permission compatibility' "$extract_dir/app-tree/$main_relative"
+          grep -Fq '[doping-hafiza] Linux graphics/media compatibility' "$extract_dir/app-tree/$main_relative"
+          grep -Fq "app.commandLine.appendSwitch('use-gl', 'disabled')" "$extract_dir/app-tree/$main_relative"
           test "$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(j.version || "")' "$extract_dir/app-tree/package.json")" = "$APP_VERSION"
           grep -Fq "version: $APP_VERSION" dist/latest-linux.yml
           grep -Fq 'sha512:' dist/latest-linux.yml

@@ -85,9 +85,11 @@ ve Release içindeki `latest-linux.yml` electron-updater'ın GitHub Releases
 kanalını kullanmasını sağlar; diferansiyel blockmap olmadığı için tam AppImage
 indirilir ve uygulama kapanırken kurulur.
 
-Grafik sürücüsü sorunlarını önlemek için `packaging/AppRun` her başlatmada
-`--disable-gpu --disable-gpu-compositing` ekler. Gerekirse X11 seçmek için
-`DOPING_HAFIZA_OZONE_PLATFORM=x11` kullanılabilir.
+Grafik sürücüsü sorunlarını ve yardımcı Electron sürecinin ayrı bir GPU
+bağlamı açmasını önlemek için `packaging/AppRun` her başlatmada
+`--disable-gpu --disable-gpu-compositing` ekler; paketleme shim'i de ana ve
+`--helper` süreçlerinde donanım hızlandırmayı kapatıp `use-gl=disabled` uygular.
+Gerekirse X11 seçmek için `DOPING_HAFIZA_OZONE_PLATFORM=x11` kullanılabilir.
 
 ## Star History
 

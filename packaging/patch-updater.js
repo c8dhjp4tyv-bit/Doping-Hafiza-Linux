@@ -16,14 +16,23 @@ const source = fs.readFileSync(inputPath, 'utf8');
 // The upstream renderer asks the main process to check microphone/camera
 // permissions before opening the coaching appointment flow. Electron exposes
 // systemPreferences.getMediaAccessStatus/askForMediaAccess on macOS only, so
-// the unmodified bundle rejects that IPC call on Linux with a TypeError. Add
-// no-op Linux implementations: Chromium still owns the actual getUserMedia
-// permission prompt, while the desktop wrapper can continue the flow.
-const linuxMediaCompatibilityShim = [
+// the unmodified bundle rejects that IPC call on Linux with a TypeError. The
+// upstream app also starts a second Electron runtime with --helper; command
+// line switches passed to AppRun are not inherited by that child. Install the
+// Linux compatibility workarounds in every main process so media IPC remains
+// callable and the helper cannot re-enable the problematic NVIDIA/Wayland GPU
+// path.
+const linuxCompatibilityShim = [
   ';(() => {',
   "  if (process.platform !== 'linux') return;",
   '  try {',
-  "    const { systemPreferences } = require('electron');",
+  "    const { app, systemPreferences } = require('electron');",
+  "    if (app && typeof app.disableHardwareAcceleration === 'function') app.disableHardwareAcceleration();",
+  "    if (app && app.commandLine && typeof app.commandLine.appendSwitch === 'function') {",
+  "      app.commandLine.appendSwitch('disable-gpu');",
+  "      app.commandLine.appendSwitch('disable-gpu-compositing');",
+  "      app.commandLine.appendSwitch('use-gl', 'disabled');",
+  '    }',
   '    const installFallback = (name, fallback) => {',
   '      if (typeof systemPreferences[name] === \'function\') return;',
   '      try {',
@@ -40,7 +49,7 @@ const linuxMediaCompatibilityShim = [
   "    installFallback('getMediaAccessStatus', () => 'granted');",
   "    installFallback('askForMediaAccess', async () => true);",
   '  } catch (error) {',
-  "    console.warn('[doping-hafiza] Linux media permission compatibility setup failed', error);",
+  "    console.warn('[doping-hafiza] Linux graphics/media compatibility setup failed', error);",
   '  }',
   '})();',
 ].join('\n');
@@ -100,7 +109,7 @@ const replacement = [
 ].join(',');
 
 const patchedBlock = managerBlock.slice(0, checkOffset) + replacement + managerBlock.slice(checkOffset + checkCall.length);
-const patched = `${linuxMediaCompatibilityShim}\n${source.slice(0, managerStart)}${patchedBlock}${source.slice(managerEnd + 2)}`;
+const patched = `${linuxCompatibilityShim}\n${source.slice(0, managerStart)}${patchedBlock}${source.slice(managerEnd + 2)}`;
 fs.writeFileSync(outputPath, patched);
 
 console.log(`configured electron-updater for github.com/${owner}/${repo}`);
