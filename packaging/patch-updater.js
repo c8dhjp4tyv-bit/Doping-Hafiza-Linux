@@ -13,6 +13,38 @@ const owner = process.env.DOPING_UPDATE_OWNER || 'c8dhjp4tyv-bit';
 const repo = process.env.DOPING_UPDATE_REPO || 'Doping-Hafiza-Linux';
 const source = fs.readFileSync(inputPath, 'utf8');
 
+// The upstream renderer asks the main process to check microphone/camera
+// permissions before opening the coaching appointment flow. Electron exposes
+// systemPreferences.getMediaAccessStatus/askForMediaAccess on macOS only, so
+// the unmodified bundle rejects that IPC call on Linux with a TypeError. Add
+// no-op Linux implementations: Chromium still owns the actual getUserMedia
+// permission prompt, while the desktop wrapper can continue the flow.
+const linuxMediaCompatibilityShim = [
+  ';(() => {',
+  "  if (process.platform !== 'linux') return;",
+  '  try {',
+  "    const { systemPreferences } = require('electron');",
+  '    const installFallback = (name, fallback) => {',
+  '      if (typeof systemPreferences[name] === \'function\') return;',
+  '      try {',
+  '        Object.defineProperty(systemPreferences, name, {',
+  '          configurable: true,',
+  '          enumerable: true,',
+  '          writable: true,',
+  '          value: fallback,',
+  '        });',
+  '      } catch {',
+  '        try { systemPreferences[name] = fallback; } catch {}',
+  '      }',
+  '    };',
+  "    installFallback('getMediaAccessStatus', () => 'granted');",
+  "    installFallback('askForMediaAccess', async () => true);",
+  '  } catch (error) {',
+  "    console.warn('[doping-hafiza] Linux media permission compatibility setup failed', error);",
+  '  }',
+  '})();',
+].join('\n');
+
 // The Windows package keeps the app code obfuscated, but the exported
 // AppUpdateManager name is stable and gives us a narrow, auditable patch point.
 const managerPattern = /([A-Za-z_$][\w$]*)\s*\[\s*['"]AppUpdateManager['"]\s*\]\s*=\s*\{\s*['"]check['"]\s*:\s*([A-Za-z_$][\w$]*)\s*=>\s*\{/g;
@@ -68,7 +100,7 @@ const replacement = [
 ].join(',');
 
 const patchedBlock = managerBlock.slice(0, checkOffset) + replacement + managerBlock.slice(checkOffset + checkCall.length);
-const patched = source.slice(0, managerStart) + patchedBlock + source.slice(managerEnd + 2);
+const patched = `${linuxMediaCompatibilityShim}\n${source.slice(0, managerStart)}${patchedBlock}${source.slice(managerEnd + 2)}`;
 fs.writeFileSync(outputPath, patched);
 
 console.log(`configured electron-updater for github.com/${owner}/${repo}`);
