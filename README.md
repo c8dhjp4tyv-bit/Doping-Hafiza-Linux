@@ -54,10 +54,12 @@ uygulaması Wine veya decompile kullanmadan çıkarılır; Electron Linux runtim
 AppImage olarak yeniden paketlenir. Kaynak EXE SHA-256'sı, AppImage checksum'ları,
 `latest-linux.yml` ve `install.sh` aynı Release'e yüklenir.
 
-Workflow ayrıca `workflow_dispatch` ile elle çalıştırılabilir. Yeni upstream
-semver sürümü için `v<sürüm>` etiketiyle Release oluşturulur veya mevcut Release
-güncellenir. Upstream aynı sürüm numarasını korursa electron-updater semver gereği
-güncelleme başlatmaz.
+Workflow ayrıca `workflow_dispatch` ile elle çalıştırılabilir; isteğe bağlı
+`release_version` girdisi Linux paket sürümünü açıkça belirler. `packaging/**`
+veya workflow dosyasına yapılan her push, upstream sürümü değişmemiş olsa bile
+Linux patch sürümünü bir artırarak `v<sürüm>` Release'i üretir. Böylece
+electron-updater kurulu sürümden daha yeni bir AppImage görür. Zamanlanmış
+upstream paketlemelerinde ise upstream semver sürümü kullanılır.
 
 Yerel paketleme için `asar`, `7z`, `mksquashfs`, ImageMagick ve Electron zip'i
 gereklidir. Kaynak EXE, Electron zip'i ve AppImage runtime yolu verilmezse betik

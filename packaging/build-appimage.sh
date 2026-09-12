@@ -12,6 +12,11 @@ ELECTRON_ZIP_PATH=${ELECTRON_ZIP_PATH:-}
 # The official executable normally contains an Electron/<version> marker. An
 # override is available for an upstream build that omits that marker.
 ELECTRON_VERSION_OVERRIDE=${ELECTRON_VERSION_OVERRIDE:-}
+# A push that changes the Linux wrapper can contain a fix even when the
+# upstream Windows package keeps the same version. These two optional values
+# let CI publish that fix as a semver-visible Linux release.
+APP_VERSION_OVERRIDE=${APP_VERSION_OVERRIDE:-}
+APP_VERSION_BUMP=${APP_VERSION_BUMP:-}
 APPIMAGE_RUNTIME_PATH=${APPIMAGE_RUNTIME_PATH:-}
 APPIMAGE_RUNTIME_URL=${APPIMAGE_RUNTIME_URL:-https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64}
 APPIMAGE_RUNTIME_SHA256=${APPIMAGE_RUNTIME_SHA256:-2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d}
@@ -83,8 +88,38 @@ asar_tree="$work_dir/app-tree"
 "$ASAR_BIN" extract "$windows_asar" "$asar_tree"
 package_json="$asar_tree/package.json"
 [[ -f "$package_json" ]] || die 'app.asar has no package.json'
-app_version=$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(j.version || "")' "$package_json")
-[[ "$app_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || die "invalid upstream app version: $app_version"
+upstream_version=$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(j.version || "")' "$package_json")
+[[ "$upstream_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || die "invalid upstream app version: $upstream_version"
+
+if [[ -n "$APP_VERSION_OVERRIDE" && -n "$APP_VERSION_BUMP" ]]; then
+  die 'APP_VERSION_OVERRIDE and APP_VERSION_BUMP cannot be used together'
+fi
+app_version=${APP_VERSION_OVERRIDE:-$upstream_version}
+if [[ -z "$APP_VERSION_OVERRIDE" && -n "$APP_VERSION_BUMP" ]]; then
+  case "$APP_VERSION_BUMP" in
+    patch)
+      if [[ "$upstream_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-.][0-9A-Za-z.-]+)?$ ]]; then
+        next_patch=$((10#${BASH_REMATCH[3]} + 1))
+        app_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$next_patch"
+      else
+        die "cannot bump non-semver upstream version: $upstream_version"
+      fi
+      ;;
+    *)
+      die "unsupported APP_VERSION_BUMP: $APP_VERSION_BUMP (use patch)"
+      ;;
+  esac
+fi
+[[ "$app_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || die "invalid Linux app version: $app_version"
+if [[ "$app_version" != "$upstream_version" ]]; then
+  APP_VERSION="$app_version" node - "$package_json" <<'NODE'
+const fs = require('fs');
+const packagePath = process.argv[2];
+const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+packageJson.version = process.env.APP_VERSION;
+fs.writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+NODE
+fi
 main_relative=$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(j.main || "")' "$package_json")
 [[ -n "$main_relative" ]] || die 'app.asar package.json has no main entry'
 main_path="$asar_tree/$main_relative"
@@ -97,7 +132,7 @@ else
   electron_version=$(printf '%s\n' "$detected_electron_line" | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*$/\1/')
 fi
 [[ "$electron_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'could not determine Electron version from the EXE; set ELECTRON_VERSION_OVERRIDE'
-log "upstream version=$app_version electron=$electron_version source_sha256=$source_sha256"
+log "upstream version=$upstream_version linux version=$app_version electron=$electron_version source_sha256=$source_sha256"
 
 patched_main="$main_path.patched"
 DOPING_UPDATE_OWNER="$UPDATE_OWNER" DOPING_UPDATE_REPO="$UPDATE_REPO" node "$ROOT_DIR/packaging/patch-updater.js" "$main_path" "$patched_main"
@@ -194,11 +229,11 @@ appimage_sha512=$(sha512sum "$appimage_path" | awk '{print $1}' | xxd -r -p | ba
 release_date=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 printf '%s  %s\n' "$appimage_sha256" "$appimage_name" > "$DIST_DIR/$appimage_name.sha256"
 printf '%s  DopingHafiza-Kurulum.exe\n' "$source_sha256" > "$DIST_DIR/source-exe.sha256"
-printf '%s\n' "$app_version" > "$DIST_DIR/source-version.txt"
+printf '%s\n' "$upstream_version" > "$DIST_DIR/source-version.txt"
 printf '%s\n' "version: $app_version" 'files:' "  - url: $appimage_name" "    sha512: $appimage_sha512" "    size: $appimage_size" "path: $appimage_name" "sha512: $appimage_sha512" "releaseDate: '$release_date'" > "$DIST_DIR/latest-linux.yml"
 install -m 0755 "$ROOT_DIR/packaging/install.sh" "$DIST_DIR/install.sh"
 sed "s/@VERSION@/$app_version/g" "$ROOT_DIR/packaging/doping-hafiza.desktop" > "$DIST_DIR/doping-hafiza.desktop"
-printf '%s\n' "# Doping Hafıza Linux $app_version" '' 'Bu paket, resmi Windows kurulumundan otomatik olarak üretildi.' "Kaynak EXE SHA-256: $source_sha256" "Electron runtime: $electron_version" '' 'Kurulum: ./install.sh' > "$DIST_DIR/release-notes.md"
+printf '%s\n' "# Doping Hafıza Linux $app_version" '' 'Bu paket, resmi Windows kurulumundan otomatik olarak üretildi.' "Upstream uygulama sürümü: $upstream_version" "Linux paket sürümü: $app_version" "Kaynak EXE SHA-256: $source_sha256" "Electron runtime: $electron_version" '' 'Kurulum: ./install.sh' > "$DIST_DIR/release-notes.md"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   printf '%s\n' "version=$app_version" "electron_version=$electron_version" "appimage=$appimage_name" "source_sha256=$source_sha256" >> "$GITHUB_OUTPUT"

@@ -56,7 +56,8 @@ desktop_escape() {
   value=${value//\\/\\\\}
   value=${value// /\\ }
   value=${value//$'\t'/\\t}
-  value=${value//"/\\"}
+  value=${value//\"/\\\"}
+  value=${value//%/%%}
   printf '%s' "$value"
 }
 

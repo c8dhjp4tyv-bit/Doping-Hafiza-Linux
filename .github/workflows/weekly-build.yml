@@ -5,6 +5,11 @@ on:
     # GitHub schedules are UTC. This is Monday 06:17 in Europe/Istanbul.
     - cron: '17 3 * * 1'
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Optional Linux semver override (for example 1.14.1)'
+        required: false
+        type: string
   push:
     paths:
       - '.github/workflows/weekly-build.yml'
@@ -25,6 +30,10 @@ jobs:
       SOURCE_PAGE_URL: https://teknik.dopinghafiza.com/
       DOPING_UPDATE_OWNER: c8dhjp4tyv-bit
       DOPING_UPDATE_REPO: Doping-Hafiza-Linux
+      # A wrapper-only push must be greater than an already-installed upstream
+      # version, otherwise electron-updater correctly treats it as unchanged.
+      APP_VERSION_BUMP: ${{ github.event_name == 'push' && 'patch' || '' }}
+      APP_VERSION_OVERRIDE: ${{ inputs.release_version || '' }}
       # This runtime is published upstream and pinned in build-appimage.sh.
       APPIMAGE_RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
       APPIMAGE_RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
@@ -54,10 +63,12 @@ jobs:
 
       - name: Verify release payload
         env:
+          APP_VERSION: ${{ steps.build.outputs.version }}
           APPIMAGE_NAME: ${{ steps.build.outputs.appimage }}
         run: |
           set -Eeuo pipefail
           test -n "$APPIMAGE_NAME"
+          test -n "$APP_VERSION"
           test -x "dist/$APPIMAGE_NAME"
           (cd dist && sha256sum -c "$APPIMAGE_NAME.sha256")
           ./dist/"$APPIMAGE_NAME" --appimage-offset
@@ -72,6 +83,12 @@ jobs:
           grep -Fq 'repo: Doping-Hafiza-Linux' "$extract_dir/squashfs-root/resources/app-update.yml"
           grep -Fq -- '--disable-gpu --disable-gpu-compositing' "$extract_dir/squashfs-root/AppRun"
           test -x "$extract_dir/squashfs-root/doping-hafiza"
+          asar extract "$extract_dir/squashfs-root/resources/app.asar" "$extract_dir/app-tree"
+          main_relative=$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(j.main || "")' "$extract_dir/app-tree/package.json")
+          test -n "$main_relative"
+          grep -Fq '[doping-hafiza] Linux media permission compatibility' "$extract_dir/app-tree/$main_relative"
+          test "$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(j.version || "")' "$extract_dir/app-tree/package.json")" = "$APP_VERSION"
+          grep -Fq "version: $APP_VERSION" dist/latest-linux.yml
           grep -Fq 'sha512:' dist/latest-linux.yml
           desktop-file-validate dist/doping-hafiza.desktop
 
