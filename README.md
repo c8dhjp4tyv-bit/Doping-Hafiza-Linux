@@ -91,6 +91,10 @@ bağlamı açmasını önlemek için `packaging/AppRun` her başlatmada
 `--helper` süreçlerinde donanım hızlandırmayı kapatıp `use-gl=disabled` uygular.
 Gerekirse X11 seçmek için `DOPING_HAFIZA_OZONE_PLATFORM=x11` kullanılabilir.
 
+Wrapper değişiklikleri push edildiğinde CI, resmi Windows sürümü değişmese bile
+son Linux release tag'inin üstünde yeni bir semver seçer; böylece
+electron-updater yeni düzeltmeyi aynı sürüm sanıp atlamaz.
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=c8dhjp4tyv-bit%2FDoping-Hafiza-Linux&type=date&legend=top-left">

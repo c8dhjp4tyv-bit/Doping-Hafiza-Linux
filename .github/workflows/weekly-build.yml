@@ -33,6 +33,9 @@ jobs:
       # A wrapper-only push must be greater than an already-installed upstream
       # version, otherwise electron-updater correctly treats it as unchanged.
       APP_VERSION_BUMP: ${{ github.event_name == 'push' && 'patch' || '' }}
+      # Also stay above the latest Linux release when several wrapper pushes
+      # happen while the official Windows version remains unchanged.
+      APP_VERSION_BUMP_FROM_RELEASE: ${{ github.event_name == 'push' && '1' || '' }}
       APP_VERSION_OVERRIDE: ${{ inputs.release_version || '' }}
       # This runtime is published upstream and pinned in build-appimage.sh.
       APPIMAGE_RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
@@ -59,6 +62,8 @@ jobs:
 
       - name: Build AppImage and update metadata
         id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./packaging/build-appimage.sh
 
       - name: Verify release payload

@@ -17,6 +17,10 @@ ELECTRON_VERSION_OVERRIDE=${ELECTRON_VERSION_OVERRIDE:-}
 # let CI publish that fix as a semver-visible Linux release.
 APP_VERSION_OVERRIDE=${APP_VERSION_OVERRIDE:-}
 APP_VERSION_BUMP=${APP_VERSION_BUMP:-}
+# When enabled by the push workflow, make the generated version greater than
+# the latest Linux release too. This prevents a wrapper-only fix from being
+# published under a tag electron-updater has already installed.
+APP_VERSION_BUMP_FROM_RELEASE=${APP_VERSION_BUMP_FROM_RELEASE:-}
 APPIMAGE_RUNTIME_PATH=${APPIMAGE_RUNTIME_PATH:-}
 APPIMAGE_RUNTIME_URL=${APPIMAGE_RUNTIME_URL:-https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64}
 APPIMAGE_RUNTIME_SHA256=${APPIMAGE_RUNTIME_SHA256:-2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d}
@@ -111,6 +115,38 @@ if [[ -z "$APP_VERSION_OVERRIDE" && -n "$APP_VERSION_BUMP" ]]; then
   esac
 fi
 [[ "$app_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || die "invalid Linux app version: $app_version"
+if [[ "$APP_VERSION_BUMP_FROM_RELEASE" == 1 && -z "$APP_VERSION_OVERRIDE" && "$APP_VERSION_BUMP" == patch ]]; then
+  latest_release_json="$work_dir/latest-linux-release.json"
+  latest_release_url="https://api.github.com/repos/$UPDATE_OWNER/$UPDATE_REPO/releases/latest"
+  log "checking latest Linux release before applying wrapper version bump"
+  release_curl_args=(
+    --fail --location --retry 3 --connect-timeout 20 --max-time 60
+    --user-agent 'Doping-Hafiza-Linux-CI/1.0'
+    --header 'Accept: application/vnd.github+json'
+  )
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    release_curl_args+=(--header "Authorization: Bearer $GH_TOKEN")
+  fi
+  curl "${release_curl_args[@]}" -o "$latest_release_json" "$latest_release_url"
+  latest_release_tag=$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(j.tag_name || "")' "$latest_release_json")
+  latest_release_version=${latest_release_tag#v}
+  [[ "$latest_release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "latest Linux release has an invalid tag: $latest_release_tag"
+  app_version=$(node - "$app_version" "$latest_release_version" <<'NODE'
+const [candidate, latest] = process.argv.slice(2).map((version) => version.split('.').map(Number));
+const compare = (left, right) => {
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index];
+  }
+  return 0;
+};
+const selected = compare(candidate, latest) > 0
+  ? candidate
+  : [latest[0], latest[1], latest[2] + 1];
+process.stdout.write(selected.join('.'));
+NODE
+  )
+  log "latest Linux release=$latest_release_version adjusted Linux version=$app_version"
+fi
 if [[ "$app_version" != "$upstream_version" ]]; then
   APP_VERSION="$app_version" node - "$package_json" <<'NODE'
 const fs = require('fs');
