@@ -57,6 +57,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Test updater patch
+        run: node --test packaging/patch-updater.test.js
+
       - name: Install pinned asar tool
         run: npm install --global @electron/asar@3.4.1
 

@@ -73,23 +73,6 @@ if (updaterMatches.length === 0) {
 }
 const updaterVariable = updaterMatches[updaterMatches.length - 1][1];
 
-const blockEndMarker = /\};\},0x[0-9a-f]+/;
-const blockEndMatch = blockEndMarker.exec(source.slice(managerStart));
-if (!blockEndMatch) {
-  throw new Error('AppUpdateManager.check block terminator was not found');
-}
-const managerEnd = managerStart + blockEndMatch.index;
-const managerBlock = source.slice(managerStart, managerEnd + 2);
-
-const checkCall = `${updaterVariable}['checkForUpdates']()`;
-const checkOffset = managerBlock.indexOf(checkCall);
-if (checkOffset < 0) {
-  throw new Error('AppUpdateManager.check does not call autoUpdater.checkForUpdates');
-}
-if (managerBlock.indexOf(checkCall, checkOffset + checkCall.length) >= 0) {
-  throw new Error('multiple updater checks found in AppUpdateManager.check');
-}
-
 const feed = JSON.stringify({
   provider: 'github',
   owner,
@@ -98,18 +81,18 @@ const feed = JSON.stringify({
   tagNamePrefix: 'v',
 });
 
-// Keep the existing progress/error IPC handlers, but configure the updater
-// before its first check and force full AppImage downloads (no blockmap needed).
-const replacement = [
+// Configure at the check function's entry, before upstream installs handlers or
+// checks for updates. Property names inside its body may be obfuscated (including
+// checkForUpdates), so preserve the entire body instead of matching that call.
+const configuration = [
   `${updaterVariable}['setFeedURL'](${feed})`,
   `${updaterVariable}['autoDownload']=!0x0`,
   `${updaterVariable}['autoInstallOnAppQuit']=!0x0`,
   `${updaterVariable}['disableDifferentialDownload']=!0x0`,
-  checkCall,
-].join(',');
+].join(';') + ';';
 
-const patchedBlock = managerBlock.slice(0, checkOffset) + replacement + managerBlock.slice(checkOffset + checkCall.length);
-const patched = `${linuxCompatibilityShim}\n${source.slice(0, managerStart)}${patchedBlock}${source.slice(managerEnd + 2)}`;
+const checkBodyStart = managerMatch.index + managerMatch[0].length;
+const patched = `${linuxCompatibilityShim}\n${source.slice(0, checkBodyStart)}${configuration}${source.slice(checkBodyStart)}`;
 fs.writeFileSync(outputPath, patched);
 
 console.log(`configured electron-updater for github.com/${owner}/${repo}`);
