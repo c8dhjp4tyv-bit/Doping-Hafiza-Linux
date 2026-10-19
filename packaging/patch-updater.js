@@ -78,7 +78,7 @@ const updaterRuntimeShim = [
   "  if (!autoUpdater || typeof autoUpdater.setFeedURL !== 'function') {",
   "    throw new Error('electron-updater does not expose a configurable autoUpdater');",
   "  }",
-  "  const feed = ${JSON.stringify(feed)};",
+  "  const feed = " + JSON.stringify(feed) + ";",
   "  const configure = () => {",
   "    autoUpdater.setFeedURL(feed);",
   "    autoUpdater.autoDownload = true;",
