@@ -54,45 +54,55 @@ const linuxCompatibilityShim = [
   '})();',
 ].join('\n');
 
-// The Windows package keeps the app code obfuscated, but the exported
-// AppUpdateManager name is stable and gives us a narrow, auditable patch point.
-const managerPattern = /([A-Za-z_$][\w$]*)\s*\[\s*['"]AppUpdateManager['"]\s*\]\s*=\s*\{\s*['"]check['"]\s*:\s*([A-Za-z_$][\w$]*)\s*=>\s*\{/g;
-const managerMatch = managerPattern.exec(source);
-if (!managerMatch) {
-  throw new Error('AppUpdateManager.check block was not found; upstream layout changed');
-}
-if (managerPattern.exec(source)) {
-  throw new Error('more than one AppUpdateManager.check block was found');
+// Upstream obfuscation can rename AppUpdateManager and change the shape of
+// its check callback. The electron-updater singleton and its public methods
+// are the stable integration point: configure immediately before a check,
+// even when upstream calls the method via a computed property name.
+// Fail closed when the upstream bundle no longer references electron-updater.
+if (!/\b(?:autoUpdater|electron-updater)\b/.test(source)) {
+  throw new Error('electron-updater integration was not found; upstream layout changed');
 }
 
-const managerStart = managerMatch.index;
-const prefix = source.slice(Math.max(0, managerStart - 5000), managerStart);
-const updaterMatches = [...prefix.matchAll(/\{\s*autoUpdater\s*:\s*([A-Za-z_$][\w$]*)\s*\}/g)];
-if (updaterMatches.length === 0) {
-  throw new Error('autoUpdater binding was not found near AppUpdateManager');
-}
-const updaterVariable = updaterMatches[updaterMatches.length - 1][1];
-
-const feed = JSON.stringify({
+const feed = {
   provider: 'github',
   owner,
   repo,
   releaseType: 'release',
   tagNamePrefix: 'v',
-});
+};
 
-// Configure at the check function's entry, before upstream installs handlers or
-// checks for updates. Property names inside its body may be obfuscated (including
-// checkForUpdates), so preserve the entire body instead of matching that call.
-const configuration = [
-  `${updaterVariable}['setFeedURL'](${feed})`,
-  `${updaterVariable}['autoDownload']=!0x0`,
-  `${updaterVariable}['autoInstallOnAppQuit']=!0x0`,
-  `${updaterVariable}['disableDifferentialDownload']=!0x0`,
-].join(';') + ';';
+const updaterRuntimeShim = [
+  ";(() => {",
+  "  if (process.platform !== 'linux') return;",
+  "  const { autoUpdater } = require('electron-updater');",
+  "  if (!autoUpdater || typeof autoUpdater.setFeedURL !== 'function') {",
+  "    throw new Error('electron-updater does not expose a configurable autoUpdater');",
+  "  }",
+  "  const feed = ${JSON.stringify(feed)};",
+  "  const configure = () => {",
+  "    autoUpdater.setFeedURL(feed);",
+  "    autoUpdater.autoDownload = true;",
+  "    autoUpdater.autoInstallOnAppQuit = true;",
+  "    autoUpdater.disableDifferentialDownload = true;",
+  "  };",
+  "  let patchedChecks = 0;",
+  "  for (const methodName of ['checkForUpdates', 'checkForUpdatesAndNotify']) {",
+  "    const original = autoUpdater[methodName];",
+  "    if (typeof original !== 'function') continue;",
+  "    autoUpdater[methodName] = function (...args) {",
+  "      configure();",
+  "      return Reflect.apply(original, this, args);",
+  "    };",
+  "    patchedChecks += 1;",
+  "  }",
+  "  if (patchedChecks === 0) {",
+  "    throw new Error('electron-updater has no supported update-check method');",
+  "  }",
+  "})();",
+].join('\n');
 
-const checkBodyStart = managerMatch.index + managerMatch[0].length;
-const patched = `${linuxCompatibilityShim}\n${source.slice(0, checkBodyStart)}${configuration}${source.slice(checkBodyStart)}`;
+// Keep the upstream main bundle byte-for-byte intact; prepend small shims.
+const patched = `${linuxCompatibilityShim}\n${updaterRuntimeShim}\n${source}`;
 fs.writeFileSync(outputPath, patched);
 
 console.log(`configured electron-updater for github.com/${owner}/${repo}`);

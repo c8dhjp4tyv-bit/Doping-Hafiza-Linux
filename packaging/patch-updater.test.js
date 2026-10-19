@@ -65,20 +65,74 @@ for (const call of ["updater['checkForUpdates']()", 'updater[decode(0x14ad)]()']
     handlers['download-progress']({ percent: 42 });
     handlers.error();
     await Promise.resolve();
-    assert.deepEqual(events, ['feed', 'download-progress', 'error', 'check']);
+    assert.deepEqual(events, ['download-progress', 'error', 'feed', 'check']);
     assert.deepEqual(callbacks, [42, null, null]);
   });
 }
 
-for (const [name, source, error] of [
-  ['missing manager', 'const unrelated = {};', /block was not found/],
-  ['duplicate managers', "a['AppUpdateManager']={'check':x=>{}};b['AppUpdateManager']={'check':x=>{}};", /more than one/],
-  ['missing updater binding', "a['AppUpdateManager']={'check':x=>{}};", /binding was not found/],
-]) {
-  test(`rejects ${name} without writing output`, (t) => {
-    const result = patch(t, source);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, error);
-    assert.equal(result.patched, null);
+test('supports a renamed manager with an obfuscated updater reference', (t) => {
+  const source = `const {autoUpdater:_0xa} = require('electron-updater');
+    exports.run = () => _0xa[decode(0x2)]();
+    function decode() { return 'checkForUpdates'; }`;
+  const result = patch(t, source);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.patched.includes(source), 'upstream source must remain unchanged');
+  const events = [];
+  const updater = {
+    setFeedURL(feed) { events.push('feed'); this.feed = feed; },
+    checkForUpdates() {
+      events.push('check');
+      assert.equal(this.feed.owner, 'test-owner');
+      assert.equal(this.autoDownload, true);
+    },
+  };
+  const exports = {};
+  vm.runInNewContext(result.patched, {
+    exports,
+    process: { platform: 'linux' },
+    require(name) {
+      if (name === 'electron') return { app: {}, systemPreferences: {} };
+      if (name === 'electron-updater') return { autoUpdater: updater };
+      throw new Error(`unexpected module: ${name}`);
+    },
   });
-}
+  assert.deepEqual(events, []);
+  exports.run();
+  assert.deepEqual(events, ['feed', 'check']);
+});
+
+test('wraps checkForUpdatesAndNotify without changing its return value', (t) => {
+  const source = `const {autoUpdater: u} = require('electron-updater');
+    exports.poll = () => u.checkForUpdatesAndNotify('arg');`;
+  const result = patch(t, source);
+  assert.equal(result.status, 0, result.stderr);
+  const events = [];
+  const updater = {
+    setFeedURL(feed) { events.push('feed'); this.feed = feed; },
+    checkForUpdatesAndNotify(value) {
+      events.push('notify');
+      assert.equal(value, 'arg');
+      assert.equal(this.feed.repo, 'test-repo');
+      assert.equal(this.disableDifferentialDownload, true);
+      return 123;
+    },
+  };
+  const exports = {};
+  vm.runInNewContext(result.patched, {
+    exports, process: { platform: 'linux' },
+    require(name) {
+      if (name === 'electron') return { app: {}, systemPreferences: {} };
+      if (name === 'electron-updater') return { autoUpdater: updater };
+      throw new Error(`unexpected module: ${name}`);
+    },
+  });
+  assert.equal(exports.poll(), 123);
+  assert.deepEqual(events, ['feed', 'notify']);
+});
+
+test('rejects a source with no electron-updater integration', (t) => {
+  const result = patch(t, 'const unrelated = {};');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /integration was not found/);
+  assert.equal(result.patched, null);
+});
